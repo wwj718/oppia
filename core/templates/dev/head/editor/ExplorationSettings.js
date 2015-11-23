@@ -247,16 +247,65 @@ oppia.controller('ExplorationSettings', [
     });
   };
 
-  $scope.publicizeExploration = function() {
-    explorationRightsService.saveChangeToBackend({is_publicized: true});
+  var openModalForModeratorAction = function(action) {
+    warningsData.clear();
+
+    $http.get('/moderatorhandler/email_draft/' + action).then(function(response) {
+      // An empty draft email body indicates that no email will be sent.
+      var draftEmailBody = response.data.draft_email_body;
+
+      $modal.open({
+        templateUrl: 'modals/takeModeratorAction',
+        backdrop: true,
+        resolve: {
+          emailBody: function() {
+            return draftEmailBody;
+          }
+        },
+        controller: [
+            '$scope', '$modalInstance', 'emailBody',
+            function($scope, $modalInstance, emailBody) {
+          $scope.action = action;
+          $scope.emailBody = emailBody;
+
+          $scope.EMAIL_BODY_SCHEMA = {
+            type: 'html'
+          };
+
+          $scope.reallyTakeAction = function() {
+            $modalInstance.close({
+              emailBody: $scope.emailBody
+            });
+          };
+
+          $scope.cancel = function() {
+            $modalInstance.dismiss('cancel');
+            warningsData.clear();
+          };
+        }]
+      }).result.then(function(result) {
+        // TODO(sll): Fix this. The existing logic is:
+        // explorationRightsService.saveChangeToBackend({is_public: false});
+        // explorationRightsService.saveChangeToBackend({is_publicized: true});
+        explorationRightsService.saveModeratorChangeToBackend({
+          action: action,
+          email_body: result.emailBody
+        });
+      });
+    });
   };
 
-  $scope.unpublicizeExploration = function() {
+  $scope.unpublishExplorationAsModerator = function() {
+    openModalForModeratorAction('unpublish_exploration');
+  };
+
+  $scope.publicizeExplorationAsModerator = function() {
+    openModalForModeratorAction('publicize_exploration');
+  };
+
+  $scope.unpublicizeExplorationAsModerator = function() {
+    // Currently this does not require sending an email.
     explorationRightsService.saveChangeToBackend({is_publicized: false});
-  };
-
-  $scope.unpublishExploration = function() {
-    explorationRightsService.saveChangeToBackend({is_public: false});
   };
 
   $scope.isExplorationLockedForEditing = function() {

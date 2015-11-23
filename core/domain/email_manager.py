@@ -63,19 +63,53 @@ EMAIL_FOOTER = config_domain.ConfigProperty(
     'HTML and include an unsubscribe link.)',
     'You can unsubscribe from these emails from the '
     '<a href="https://www.example.com">Preferences</a> page.')
-# NOTE TO DEVELOPERS: post-signup emails will not be sent if this placeholder
-# is left unmodified. If this policy changes, this should be documented in the
-# wiki.
+# NOTE TO DEVELOPERS: the relevant emails will not be sent if any of these
+# placeholders are left unmodified. If this policy changes, this should be
+# documented in the wiki.
+_PLACEHOLDER_SUBJECT = 'THIS IS A PLACEHOLDER.'
+_PLACEHOLDER_HTML_BODY = 'THIS IS A <b>PLACEHOLDER</b> AND SHOULD BE REPLACED.'
 SIGNUP_EMAIL_CONTENT = config_domain.ConfigProperty(
     'signup_email_content', EMAIL_CONTENT_SCHEMA,
     'Content of email sent after a new user signs up. (The email body should '
     'be written with HTML and not include a salutation or footer.) These '
     'emails are only sent if the functionality is enabled in feconf.py.',
     {
-        'subject': 'THIS IS A PLACEHOLDER.',
-        'html_body': 'THIS IS A <b>PLACEHOLDER</b> AND SHOULD BE REPLACED.',
+        'subject': _PLACEHOLDER_SUBJECT,
+        'html_body': _PLACEHOLDER_HTML_BODY,
+    })
+PUBLICIZE_EXPLORATION_EMAIL_CONTENT = config_domain.ConfigProperty(
+    'publicize_exploration_email_content', EMAIL_CONTENT_SCHEMA,
+    'Content of email sent after an exploration is publicized by a moderator. '
+    'These emails are only sent if the functionality is enabled in feconf.py.',
+    {
+        'subject': _PLACEHOLDER_SUBJECT,
+        'html_body': _PLACEHOLDER_HTML_BODY,
+    })
+UNPUBLISH_EXPLORATION_EMAIL_CONTENT = config_domain.ConfigProperty(
+    'unpublish_exploration_email_content', EMAIL_CONTENT_SCHEMA,
+    'Content of email sent after an exploration is unpublished by a '
+    'moderator. These emails are only sent if the functionality is enabled in '
+    'feconf.py.',
+    {
+        'subject': _PLACEHOLDER_SUBJECT,
+        'html_body': _PLACEHOLDER_HTML_BODY,
+    })
+DELETE_EXPLORATION_EMAIL_CONTENT = config_domain.ConfigProperty(
+    'delete_exploration_email_content', EMAIL_CONTENT_SCHEMA,
+    'Content of email sent after an exploration is deleted by a moderator. '
+    'These emails are only sent if the functionality is enabled in feconf.py.',
+    {
+        'subject': _PLACEHOLDER_SUBJECT,
+        'html_body': _PLACEHOLDER_HTML_BODY,
     })
 
+_POST_MODERATOR_ACTION_EMAIL_CONFIGS = {
+    email_models.INTENT_PUBLICIZE_EXPLORATION: (
+        PUBLICIZE_EXPLORATION_EMAIL_CONTENT),
+    email_models.INTENT_UNPUBLISH_EXPLORATION: (
+        UNPUBLISH_EXPLORATION_EMAIL_CONTENT),
+    email_models.INTENT_DELETE_EXPLORATION: DELETE_EXPLORATION_EMAIL_CONTENT,
+}
 
 SENDER_VALIDATORS = {
     email_models.INTENT_SIGNUP: (lambda x: x == feconf.SYSTEM_COMMITTER_ID),
@@ -166,3 +200,52 @@ def send_post_signup_email(user_id):
     _send_email(
         user_id, feconf.SYSTEM_COMMITTER_ID, email_models.INTENT_SIGNUP,
         email_subject, email_body)
+
+
+def require_valid_intent(intent):
+    if intent not in _POST_MODERATOR_ACTION_EMAIL_CONFIGS:
+        raise Exception('Unrecognized email intent: %s' % intent)
+
+
+def _get_email_config(intent):
+    require_valid_intent(intent)
+    return _POST_MODERATOR_ACTION_EMAIL_CONFIGS[intent]
+
+
+def get_draft_moderator_action_email(intent):
+    email_config = _get_email_config(intent)
+    for key, content in email_config.value.iteritems():
+        if content == email_config.default_value[key]:
+            raise Exception(
+                'Please ensure that the value for the admin config property '
+                '%s is set, before allowing moderator emails to be sent.' %
+                email_config.name)
+            return
+
+    return email_config.value['html_body']
+
+
+def send_moderator_action_email(
+        sender_id, recipient_id, intent, email_subject, email_body):
+    """Sends a email immediately following a moderator action (publicize,
+    unpublish, delete) to the given user.
+
+    The caller is responsible for ensuring that emails are allowed to be sent
+    to users (i.e. feconf.CAN_SEND_EMAILS_TO_USERS is True).
+    """
+    email_config = _get_email_config(intent)
+    for key, content in email_config.value.iteritems():
+        if content == email_config.default_value[key]:
+            raise Exception(
+                'Please ensure that the value for the admin config property '
+                '%s is set, before allowing moderator emails to be sent.' %
+                email_config.name)
+
+    recipient_user_settings = user_services.get_user_settings(recipient_id)
+    sender_user_settings = user_services.get_user_settings(sender_id)
+    full_email_content = (
+        'Hi %s,<br><br>%s<br><br>Thanks,<br>%s<br><br>%s' %
+        recipient_user_settings.username, email_body,
+        sender_user_settings.username, EMAIL_FOOTER.value)
+    _send_email(
+        recipient_id, sender_id, intent, email_subject, full_email_content)

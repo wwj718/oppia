@@ -20,7 +20,6 @@ __author__ = 'Sean Lip'
 
 from core.platform import models
 (base_models,) = models.Registry.import_models([models.NAMES.base_model])
-import feconf
 import utils
 
 from google.appengine.ext import ndb
